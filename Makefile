@@ -1,5 +1,12 @@
-# Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+# Version is read from the VERSION file at the repo root.
+# Bump this file with every PR that changes operator behavior.
+VERSION ?= $(shell cat VERSION)
+
+# Image URL to use for building/pushing image targets.
+# Override at the command line to target a specific registry, e.g.:
+#   make docker-build docker-push IMG=ghcr.io/54b3r/platform-operator-blueprint:v0.1.0
+#   make docker-build docker-push IMG=docker.io/54b3r/platform-operator-blueprint:v0.1.0
+IMG ?= controller:v$(VERSION)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
