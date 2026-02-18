@@ -262,3 +262,66 @@ The following targets are planned to wrap the above steps for a faster dev loop:
 | `make dev-down` | Delete CR + kind cluster |
 
 These will be added in a future iteration alongside the 3 Musketeers Makefile targets.
+
+---
+
+## PR Checklist
+
+Every PR that changes operator behavior must include the following before merge:
+
+- [ ] **Bump `VERSION`** — increment the version in the `VERSION` file at the repo root
+  - Bug fix → bump `PATCH` (e.g. `0.1.0` → `0.1.1`)
+  - New feature → bump `MINOR` (e.g. `0.1.0` → `0.2.0`)
+  - Breaking API change → bump `MAJOR` (e.g. `0.1.0` → `1.0.0`)
+- [ ] **`go build ./...` passes** — no compile errors
+- [ ] **`make manifests` run** — CRD and RBAC manifests regenerated if types/markers changed
+- [ ] **`make generate` run** — deepcopy functions regenerated if types changed
+- [ ] **Local smoke test passed** — operator starts, CR applies, reconcile fires (see steps above)
+- [ ] **Commit message follows conventional commits** — `feat:`, `fix:`, `chore:`, `docs:`, etc.
+- [ ] **After merge: tag the release** — `git tag v<VERSION> && git push origin v<VERSION>`
+
+### Versioning Reference
+
+The `VERSION` file at the repo root is the single source of truth:
+
+```bash
+# Check current version
+cat VERSION
+
+# Bump patch version example (0.1.0 → 0.1.1)
+echo "0.1.1" > VERSION
+
+# After merging to master, tag the release
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+The `Makefile` reads `VERSION` automatically. The default image tag is
+`controller:v<VERSION>` (local only, no registry). Override `IMG` to target
+a specific registry at build/push time:
+
+```bash
+# Build locally (no registry push)
+make docker-build
+# Produces: controller:v0.1.0
+
+# Build and push to GitHub Container Registry
+make docker-build docker-push IMG=ghcr.io/54b3r/platform-operator-blueprint:v0.1.0
+
+# Build and push to Docker Hub
+make docker-build docker-push IMG=docker.io/54b3r/platform-operator-blueprint:v0.1.0
+```
+
+> **Registry authentication:** Before pushing to any registry you must authenticate:
+> ```bash
+> # GHCR — requires a GitHub PAT with write:packages scope
+> docker login ghcr.io -u 54b3r --password <PAT>
+>
+> # Docker Hub
+> docker login docker.io
+> ```
+> Never commit credentials. Store them as environment variables or GitHub Actions secrets.
+
+> **Pre-stable convention:** While the operator is under active development
+> (`v0.x.x`), breaking changes are allowed between minor versions. Stabilize
+> at `v1.0.0` once the API is considered production-ready.
