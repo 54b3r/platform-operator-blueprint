@@ -4,13 +4,14 @@ metadata:
   labels:
     app.kubernetes.io/name: platform-operator-blueprint
     app.kubernetes.io/managed-by: kustomize
-  name: webapp-sample
+  name: webapp-sidecar
 spec:
   image: nginx:1.25
-  replicas: 1
+  replicas: 3
   port: 8080
   storage:
-    size: 1Gi
+    size: 20Mi
   initContainer:
     image: busybox:1.36
-    command: ["sh", "-c", "echo init complete"]
+    command: ["sh", "-c", "sleep 25"]
+    restartPolicy: Always

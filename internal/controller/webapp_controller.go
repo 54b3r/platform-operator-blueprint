@@ -68,6 +68,9 @@ type WebAppReconciler struct {
 // Needed to create and manage the Service child resource.
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 
+// Needed to create and manage the PersistentVolumeClaim child resource.
+// +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+
 // Needed for leader election to work correctly in multi-replica deployments.
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch;delete
 
@@ -136,6 +139,12 @@ func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, fmt.Errorf("reconciling service: %w", err)
 	}
 
+	// Reconcile the Storage child resource.
+	if err := r.reconcileStorage(ctx, webapp); err != nil {
+		_ = r.setCondition(ctx, webapp, appv1alpha1.TypeDegraded, metav1.ConditionTrue,
+			"StorageFailed", err.Error())
+		return ctrl.Result{}, fmt.Errorf("reconciling storage: %w", err)
+	}
 	// Fetch the current Deployment to read available replicas for status.
 	dep := &appsv1.Deployment{}
 	if err := r.Get(ctx, types.NamespacedName{Name: webapp.Name, Namespace: webapp.Namespace}, dep); err != nil {
@@ -201,6 +210,7 @@ func (r *WebAppReconciler) reconcileDeployment(ctx context.Context, webapp *appv
 					Labels: labelsForWebApp(webapp.Name),
 				},
 				Spec: corev1.PodSpec{
+					Volumes: volumesForWebApp(webapp.Name, webapp.Spec.Storage),
 					Containers: []corev1.Container{
 						{
 							Name:  "webapp",
@@ -211,8 +221,10 @@ func (r *WebAppReconciler) reconcileDeployment(ctx context.Context, webapp *appv
 									Protocol:      corev1.ProtocolTCP,
 								},
 							},
+							VolumeMounts: volumeMountsForWebApp(webapp.Spec.Storage),
 						},
 					},
+					InitContainers: initContainersForWebApp(webapp.Spec.InitContainer),
 				},
 			},
 		},
@@ -239,6 +251,59 @@ func (r *WebAppReconciler) reconcileDeployment(ctx context.Context, webapp *appv
 	existing.Spec.Template.Spec.Containers[0].Ports = desired.Spec.Template.Spec.Containers[0].Ports
 	log.Info("updating deployment", "name", webapp.Name)
 	return r.Update(ctx, existing)
+}
+
+// reconcileStorage creates or updates the PersistentVolumeClaim for the given WebApp.
+// It sets an owner reference so the PVC is garbage-collected with the WebApp.
+func (r *WebAppReconciler) reconcileStorage(ctx context.Context, webapp *appv1alpha1.WebApp) error {
+	log := logf.FromContext(ctx)
+
+	// Storage is optional — if not specified, nothing to reconcile.
+	if webapp.Spec.Storage == nil {
+		return nil
+	}
+
+	desiredPVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      webapp.Name + "-pvc", // Naming convention
+			Namespace: webapp.Namespace,
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			// Access mode is currently hard coded to ReadWriteOnce, might want to make this configurable?
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: webapp.Spec.Storage.Size,
+				},
+			},
+		},
+	}
+	if webapp.Spec.Storage.StorageClassName != nil {
+		desiredPVC.Spec.StorageClassName = webapp.Spec.Storage.StorageClassName
+	}
+
+	// Set the WebApp as the owner of the PVC so it is garbage-collected on deletion.
+	if err := controllerutil.SetControllerReference(webapp, desiredPVC, r.Scheme); err != nil {
+		return fmt.Errorf("setting owner reference on PVC: %w", err)
+	}
+
+	// Check if PVC already exists; if so, do nothing.
+	// PVC spec (size, storageClassName) is immutable after creation — Kubernetes will
+	// reject updates to these fields unless the StorageClass supports volume expansion.
+	// Resizing is intentionally out of scope for this operator.
+	existing := &corev1.PersistentVolumeClaim{}
+	err := r.Get(ctx, types.NamespacedName{Name: webapp.Name + "-pvc", Namespace: webapp.Namespace}, existing)
+	if apierrors.IsNotFound(err) {
+		log.Info("creating pvc", "name", webapp.Name+"-pvc")
+		return r.Create(ctx, desiredPVC)
+	}
+	if err != nil {
+		return fmt.Errorf("getting pvc: %w", err)
+	}
+
+	// PVC already exists — no update needed.
+	log.Info("pvc already exists, skipping update", "name", webapp.Name+"-pvc")
+	return nil
 }
 
 // reconcileService creates or updates the ClusterIP Service for the given WebApp.
@@ -313,6 +378,63 @@ func (r *WebAppReconciler) setCondition(ctx context.Context, webapp *appv1alpha1
 	return nil
 }
 
+// volumesForWebApp returns the list of Volumes to attach to the pod spec.
+// Returns nil if no storage is configured, resulting in no volumes on the pod.
+// The volume name "data" is the shared convention used by volumeMountsForWebApp.
+func volumesForWebApp(name string, storage *appv1alpha1.StorageSpec) []corev1.Volume {
+	if storage == nil {
+		return nil
+	}
+	return []corev1.Volume{
+		{
+			Name: "data",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: name + "-pvc",
+				},
+			},
+		},
+	}
+}
+
+// volumeMountsForWebApp returns the list of VolumeMounts to attach to the main container.
+// Returns nil if no storage is configured, resulting in no mounts on the container.
+// Mounts the PVC at /data — a conventional path for persistent application data.
+func volumeMountsForWebApp(storage *appv1alpha1.StorageSpec) []corev1.VolumeMount {
+	if storage == nil {
+		return nil
+	}
+	return []corev1.VolumeMount{
+		{
+			Name:      "data",
+			MountPath: "/data",
+		},
+	}
+}
+
+// initContainersForWebApp returns the list of init containers to inject into the
+// pod spec. Returns nil (no init containers) if spec is nil, which is the common case.
+// Defaults the container name to "init" if not specified by the user.
+func initContainersForWebApp(spec *appv1alpha1.InitContainerSpec) []corev1.Container {
+	if spec == nil {
+		return nil
+	}
+	name := spec.Name
+	if name == "" {
+		name = "init"
+	}
+	return []corev1.Container{
+		{
+			Name:          name,
+			Image:         spec.Image,
+			Command:       spec.Command,
+			Args:          spec.Args,
+			Env:           spec.Env,
+			RestartPolicy: spec.RestartPolicy,
+		},
+	}
+}
+
 // labelsForWebApp returns the standard label set applied to all resources
 // managed by this operator for a given WebApp name.
 func labelsForWebApp(name string) map[string]string {
@@ -331,6 +453,7 @@ func (r *WebAppReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&appv1alpha1.WebApp{}).
 		Owns(&appsv1.Deployment{}).
 		Owns(&corev1.Service{}).
+		Owns(&corev1.PersistentVolumeClaim{}).
 		Named("webapp").
 		Complete(r)
 }

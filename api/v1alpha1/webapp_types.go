@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -42,6 +44,59 @@ type WebAppSpec struct {
 	// +kubebuilder:default=8080
 	// +optional
 	Port int32 `json:"port,omitempty"`
+
+	// Storage specifies the persistent storage configuration for the application.
+	// +optional
+	Storage *StorageSpec `json:"storage,omitempty"`
+
+	// InitContainer defines an optional init container that runs before the
+	// main application container. Useful for setup tasks like downloading models.
+	// +optional
+	InitContainer *InitContainerSpec `json:"initContainer,omitempty"`
+}
+
+// StorageSpec defines the options available under the Storage option for the WebAppSpec
+type StorageSpec struct {
+	// Size is the size of the persistent storage volume.
+	// Example: "1Gi"
+	// +kubebuilder:validation:Required
+	Size resource.Quantity `json:"size"`
+
+	// StorageClassName is the name of the storage class to use for the persistent storage volume.
+	// +optional
+	StorageClassName *string `json:"storageClassName,omitempty"`
+}
+
+// InitContainerSpec defines the configuration for an optional init container
+// that runs before the main application container starts.
+type InitContainerSpec struct {
+	// Name is the name of the init container.
+	// Defaults to "init" if not specified.
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Image is the container image to run.
+	// +kubebuilder:validation:Required
+	Image string `json:"image"`
+
+	// Command overrides the image entrypoint.
+	// +optional
+	Command []string `json:"command,omitempty"`
+
+	// Args are the arguments passed to the command.
+	// +optional
+	Args []string `json:"args,omitempty"`
+
+	// Env is a list of environment variables to set in the init container.
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// RestartPolicy defines the restart behavior of the init container.
+	// Set to "Always" to run as a sidecar container (Kubernetes 1.29+).
+	// If unset, the init container runs once and must complete successfully before
+	// the main container starts.
+	// +optional
+	RestartPolicy *corev1.ContainerRestartPolicy `json:"restartPolicy,omitempty"`
 }
 
 // WebAppStatus defines the observed state of WebApp.
