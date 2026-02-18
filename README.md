@@ -12,8 +12,8 @@ Before getting started, ensure the following tools are installed and configured:
 
 | Tool | Version | Install |
 |------|---------|---------|
-| Go | 1.21+ | https://go.dev/dl/ |
-| operator-sdk CLI | v1.34+ | https://sdk.operatorframework.io/docs/installation/ |
+| Go | 1.23+ | https://go.dev/dl/ |
+| operator-sdk CLI | v1.42+ | https://sdk.operatorframework.io/docs/installation/ |
 | kubectl | latest | https://kubernetes.io/docs/tasks/tools/ |
 | docker / podman | latest | https://docs.docker.com/get-docker/ |
 | kind or minikube | latest | https://kind.sigs.k8s.io/ or https://minikube.sigs.k8s.io/ |
@@ -24,10 +24,10 @@ Before getting started, ensure the following tools are installed and configured:
 # Option 1 — Homebrew
 brew install operator-sdk
 
-# Option 2 — Direct binary (Apple Silicon)
+# Option 2 — Direct binary (recommended for Apple Silicon / darwin/arm64)
 export ARCH=$(case $(uname -m) in x86_64) echo -n amd64 ;; aarch64) echo -n arm64 ;; *) echo -n $(uname -m) ;; esac)
 export OS=$(uname | awk '{print tolower($0)}')
-export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.34.1
+export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.42.0
 curl -LO ${OPERATOR_SDK_DL_URL}/operator-sdk_${OS}_${ARCH}
 chmod +x operator-sdk_${OS}_${ARCH}
 sudo mv operator-sdk_${OS}_${ARCH} /usr/local/bin/operator-sdk
@@ -61,7 +61,8 @@ From inside `~/go/src/github.com/54b3r/platform-operator-blueprint`:
 ```bash
 operator-sdk init \
   --domain 54b3r.io \
-  --repo github.com/54b3r/platform-operator-blueprint
+  --repo github.com/54b3r/platform-operator-blueprint \
+  --plugins=go/v4
 ```
 
 This generates:
@@ -81,12 +82,13 @@ operator-sdk create api \
   --version v1alpha1 \
   --kind WebApp \
   --resource \
-  --controller
+  --controller \
+  --plugins=go/v4
 ```
 
 This generates:
 - `api/v1alpha1/webapp_types.go` — your CRD struct (`Spec` + `Status`)
-- `controllers/webapp_controller.go` — your `Reconcile()` function
+- `internal/controller/webapp_controller.go` — your `Reconcile()` function
 - `config/crd/` — CRD manifest (auto-generated from types)
 - `config/rbac/` — RBAC role for the controller
 
@@ -130,7 +132,7 @@ make manifests
 
 ## Step 5 — Implement the Reconcile Loop
 
-Edit `controllers/webapp_controller.go`. The full production reconcile pattern:
+Edit `internal/controller/webapp_controller.go`. The full production reconcile pattern:
 
 ```go
 func (r *WebAppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -325,9 +327,10 @@ platform-operator-blueprint/
 │       ├── webapp_types.go          # CRD type definitions (Spec, Status, Conditions)
 │       ├── groupversion_info.go
 │       └── zz_generated.deepcopy.go # auto-generated, do not edit
-├── controllers/
-│   ├── webapp_controller.go         # Reconcile logic, finalizer, status updates
-│   └── suite_test.go
+├── internal/
+│   └── controller/
+│       ├── webapp_controller.go     # Reconcile logic, finalizer, status updates
+│       └── suite_test.go
 ├── config/
 │   ├── crd/                         # Generated CRD manifests
 │   ├── rbac/                        # Generated least-privilege RBAC manifests

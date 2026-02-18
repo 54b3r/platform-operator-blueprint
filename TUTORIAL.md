@@ -104,14 +104,16 @@ An operator at MVP level must:
 ```bash
 operator-sdk init \
   --domain 54b3r.io \
-  --repo github.com/54b3r/platform-operator-blueprint
+  --repo github.com/54b3r/platform-operator-blueprint \
+  --plugins=go/v4
 
 operator-sdk create api \
   --group app \
   --version v1alpha1 \
   --kind WebApp \
   --resource \
-  --controller
+  --controller \
+  --plugins=go/v4
 ```
 
 ### What `--domain` Does
@@ -128,7 +130,7 @@ After these two commands you have a compilable, runnable (but empty) operator. T
 
 - **`main.go`** — sets up the manager, registers the controller, starts the informer cache and reconcile workers
 - **`api/v1alpha1/webapp_types.go`** — your CRD struct, currently empty stubs
-- **`controllers/webapp_controller.go`** — your reconciler, currently a no-op
+- **`internal/controller/webapp_controller.go`** — your reconciler, currently a no-op
 - **`config/`** — Kustomize manifests for CRDs, RBAC, and the manager Deployment
 
 ---
