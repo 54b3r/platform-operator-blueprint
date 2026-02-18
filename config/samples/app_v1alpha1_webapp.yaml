@@ -1,0 +1,9 @@
+apiVersion: app.54b3r.io/v1alpha1
+kind: WebApp
+metadata:
+  labels:
+    app.kubernetes.io/name: platform-operator-blueprint
+    app.kubernetes.io/managed-by: kustomize
+  name: webapp-sample
+spec:
+  # TODO(user): Add fields here
