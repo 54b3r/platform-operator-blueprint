@@ -1,0 +1,46 @@
+# Binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go build artifacts
+*.test
+*.out
+vendor/
+
+# Go workspace
+go.work
+go.work.sum
+
+# Operator SDK / controller-gen artifacts
+testbin/
+cover.out
+cover.html
+
+# Kustomize standalone binary (if downloaded locally)
+kustomize
+
+# kubebuilder test assets
+bin/k8s/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment / secrets — never commit these
+.env
+.env.*
+*.pem
+*.key
+*.crt
+kubeconfig
+*kubeconfig*
+
+# Compiled operator binary
+manager
