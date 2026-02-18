@@ -42,5 +42,5 @@ bin/k8s/
 kubeconfig
 *kubeconfig*
 
-# Compiled operator binary
-manager
+# Compiled operator binary (root-level only, not config/manager/)
+/manager
